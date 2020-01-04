@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 @SuppressWarnings("ComparableImplementedButEqualsNotOverridden")
 final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFuture<V> {
+
     private static final AtomicLong nextTaskId = new AtomicLong();
     private static final long START_TIME = System.nanoTime();
 
@@ -37,6 +38,8 @@ final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFu
 
     private final long id = nextTaskId.getAndIncrement();
     private long deadlineNanos;
+
+    // 区分三种定时任务
     /* 0 - no repeat, >0 - repeat at fixed rate, <0 - repeat with fixed delay */
     private final long periodNanos;
 
@@ -115,6 +118,7 @@ final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFu
     public void run() {
         assert executor().inEventLoop();
         try {
+            // 不重复执行
             if (periodNanos == 0) {
                 if (setUncancellableInternal()) {
                     V result = task.call();
@@ -127,12 +131,16 @@ final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFu
                     if (!executor().isShutdown()) {
                         long p = periodNanos;
                         if (p > 0) {
+                            // 固定频率
                             deadlineNanos += p;
                         } else {
+                            // 执行完后延迟 -p 时间
                             deadlineNanos = nanoTime() - p;
                         }
                         if (!isCancelled()) {
-                            // scheduledTaskQueue can never be null as we lazy init it before submit the task!
+                            // scheduledTaskQueue can never be null as we lazy init it before
+                            // submit the task!
+                            // 添加下一次任务
                             Queue<ScheduledFutureTask<?>> scheduledTaskQueue =
                                     ((AbstractScheduledEventExecutor) executor()).scheduledTaskQueue;
                             assert scheduledTaskQueue != null;
@@ -165,11 +173,11 @@ final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFu
         buf.setCharAt(buf.length() - 1, ',');
 
         return buf.append(" id: ")
-                  .append(id)
-                  .append(", deadline: ")
-                  .append(deadlineNanos)
-                  .append(", period: ")
-                  .append(periodNanos)
-                  .append(')');
+                .append(id)
+                .append(", deadline: ")
+                .append(deadlineNanos)
+                .append(", period: ")
+                .append(periodNanos)
+                .append(')');
     }
 }

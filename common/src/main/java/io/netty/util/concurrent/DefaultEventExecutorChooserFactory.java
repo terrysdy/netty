@@ -32,6 +32,7 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
     @SuppressWarnings("unchecked")
     @Override
     public EventExecutorChooser newChooser(EventExecutor[] executors) {
+        // 2 的 n 次方创建 PowerOfTowEventExecutorChooser
         if (isPowerOfTwo(executors.length)) {
             return new PowerOfTowEventExecutorChooser(executors);
         } else {
@@ -53,6 +54,7 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
 
         @Override
         public EventExecutor next() {
+            // 位运算。。
             return executors[idx.getAndIncrement() & executors.length - 1];
         }
     }
@@ -67,6 +69,7 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
 
         @Override
         public EventExecutor next() {
+            // 直接取模
             return executors[Math.abs(idx.getAndIncrement() % executors.length)];
         }
     }

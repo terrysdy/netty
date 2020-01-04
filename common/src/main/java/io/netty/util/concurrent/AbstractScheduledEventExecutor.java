@@ -13,6 +13,7 @@
  * License for the specific language governing permissions and limitations
  * under the License.
  */
+
 package io.netty.util.concurrent;
 
 import io.netty.util.internal.ObjectUtil;
@@ -28,6 +29,7 @@ import java.util.concurrent.TimeUnit;
  */
 public abstract class AbstractScheduledEventExecutor extends AbstractEventExecutor {
 
+    // 保存 scheduledTask 的非线程安全的优先队列。只会在 reactor 线程中调用
     Queue<ScheduledFutureTask<?>> scheduledTaskQueue;
 
     protected AbstractScheduledEventExecutor() {
@@ -48,13 +50,13 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
         return scheduledTaskQueue;
     }
 
-    private static  boolean isNullOrEmpty(Queue<ScheduledFutureTask<?>> queue) {
+    private static boolean isNullOrEmpty(Queue<ScheduledFutureTask<?>> queue) {
         return queue == null || queue.isEmpty();
     }
 
     /**
      * Cancel all scheduled tasks.
-     *
+     * <p>
      * This method MUST be called only when {@link #inEventLoop()} is {@code true}.
      */
     protected void cancelScheduledTasks() {
@@ -67,7 +69,7 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
         final ScheduledFutureTask<?>[] scheduledTasks =
                 scheduledTaskQueue.toArray(new ScheduledFutureTask<?>[scheduledTaskQueue.size()]);
 
-        for (ScheduledFutureTask<?> task: scheduledTasks) {
+        for (ScheduledFutureTask<?> task : scheduledTasks) {
             task.cancelWithoutRemove(false);
         }
 
@@ -84,12 +86,14 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
     /**
      * Return the {@link Runnable} which is ready to be executed with the given {@code nanoTime}.
      * You should use {@link #nanoTime()} to retrieve the the correct {@code nanoTime}.
+     * 仅取到期的定时任务
      */
     protected final Runnable pollScheduledTask(long nanoTime) {
         assert inEventLoop();
 
         Queue<ScheduledFutureTask<?>> scheduledTaskQueue = this.scheduledTaskQueue;
-        ScheduledFutureTask<?> scheduledTask = scheduledTaskQueue == null ? null : scheduledTaskQueue.peek();
+        ScheduledFutureTask<?> scheduledTask =
+                scheduledTaskQueue == null ? null : scheduledTaskQueue.peek();
         if (scheduledTask == null) {
             return null;
         }
@@ -102,11 +106,13 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
     }
 
     /**
-     * Return the nanoseconds when the next scheduled task is ready to be run or {@code -1} if no task is scheduled.
+     * Return the nanoseconds when the next scheduled task is ready to be run or {@code -1} if no
+     * task is scheduled.
      */
     protected final long nextScheduledTaskNano() {
         Queue<ScheduledFutureTask<?>> scheduledTaskQueue = this.scheduledTaskQueue;
-        ScheduledFutureTask<?> scheduledTask = scheduledTaskQueue == null ? null : scheduledTaskQueue.peek();
+        ScheduledFutureTask<?> scheduledTask =
+                scheduledTaskQueue == null ? null : scheduledTaskQueue.peek();
         if (scheduledTask == null) {
             return -1;
         }
@@ -126,12 +132,13 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
      */
     protected final boolean hasScheduledTasks() {
         Queue<ScheduledFutureTask<?>> scheduledTaskQueue = this.scheduledTaskQueue;
-        ScheduledFutureTask<?> scheduledTask = scheduledTaskQueue == null ? null : scheduledTaskQueue.peek();
+        ScheduledFutureTask<?> scheduledTask =
+                scheduledTaskQueue == null ? null : scheduledTaskQueue.peek();
         return scheduledTask != null && scheduledTask.deadlineNanos() <= nanoTime();
     }
 
     @Override
-    public  ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit) {
+    public ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit) {
         ObjectUtil.checkNotNull(command, "command");
         ObjectUtil.checkNotNull(unit, "unit");
         if (delay < 0) {
@@ -155,7 +162,8 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
     }
 
     @Override
-    public ScheduledFuture<?> scheduleAtFixedRate(Runnable command, long initialDelay, long period, TimeUnit unit) {
+    public ScheduledFuture<?> scheduleAtFixedRate(Runnable command, long initialDelay, long period,
+            TimeUnit unit) {
         ObjectUtil.checkNotNull(command, "command");
         ObjectUtil.checkNotNull(unit, "unit");
         if (initialDelay < 0) {
@@ -169,11 +177,13 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
 
         return schedule(new ScheduledFutureTask<Void>(
                 this, Executors.<Void>callable(command, null),
-                ScheduledFutureTask.deadlineNanos(unit.toNanos(initialDelay)), unit.toNanos(period)));
+                ScheduledFutureTask.deadlineNanos(unit.toNanos(initialDelay)),
+                unit.toNanos(period)));
     }
 
     @Override
-    public ScheduledFuture<?> scheduleWithFixedDelay(Runnable command, long initialDelay, long delay, TimeUnit unit) {
+    public ScheduledFuture<?> scheduleWithFixedDelay(Runnable command, long initialDelay,
+            long delay, TimeUnit unit) {
         ObjectUtil.checkNotNull(command, "command");
         ObjectUtil.checkNotNull(unit, "unit");
         if (initialDelay < 0) {
@@ -187,13 +197,16 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
 
         return schedule(new ScheduledFutureTask<Void>(
                 this, Executors.<Void>callable(command, null),
-                ScheduledFutureTask.deadlineNanos(unit.toNanos(initialDelay)), -unit.toNanos(delay)));
+                ScheduledFutureTask.deadlineNanos(unit.toNanos(initialDelay)),
+                -unit.toNanos(delay)));
     }
 
     <V> ScheduledFuture<V> schedule(final ScheduledFutureTask<V> task) {
         if (inEventLoop()) {
+            // 在 reactor 线程里，直接添加
             scheduledTaskQueue().add(task);
         } else {
+            // 非 reactor 线程，只是添加一个 【添加一个定时任务】 的任务，让操作 queue 的动作变成在 reactor 线程里
             execute(new Runnable() {
                 @Override
                 public void run() {
